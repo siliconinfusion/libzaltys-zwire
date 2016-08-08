@@ -18,7 +18,7 @@
 
 ***************************************************************************************************
 
-  ZEDwire SPI Interface
+  Zwire SPI Interface
 
 **************************************************************************************************/
 
@@ -147,7 +147,7 @@ static int zwspiTransfer(int _fd, uint8_t _cmd, uint32_t _address, uint16_t _cou
       uint8_t tx_buf[len];
       uint8_t rx_buf[len];
 
-      /* Build up ZEDwire message header */
+      /* Build up Zwire message header */
       uint8_t* pTx = &tx_buf[0];
       *pTx++ = _cmd;
       uint32_t address = _address;
@@ -159,7 +159,7 @@ static int zwspiTransfer(int _fd, uint8_t _cmd, uint32_t _address, uint16_t _cou
       *pTx++ = (uint8_t)((count >> 8u) & 0xFFu);
       *pTx++ = (uint8_t)(count & 0xFFu);
 
-      /* Build up ZEDwire message payload */
+      /* Build up Zwire message payload */
       for (uint16_t i = 0; i < _count; ++i)
       {
         uint32_t data = (_txData != NULL) ? _txData[i] : 0;
