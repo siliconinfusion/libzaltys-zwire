@@ -47,17 +47,23 @@ typedef enum
   eZWSPICmdSeqWrite = 0x03      /* Write N times to sequential addresses */
 } ZWSPICmd;
 
-static const char* const device[MAX_DSPI] = { "/dev/spidev3.0", "/dev/spidev3.1" };
+static const char* const device[MAX_DSPI] = { "/dev/spidev3.0", "/dev/spidev3.1" };  /* Devices */
+
+uint8_t device_rdshift[MAX_DSPI] = { 0, 0 };  /* Number of clocks by which read-data is delayed, per device */
+
+int device_fd[MAX_DSPI] = { -1, -1 };  /* Current file-descriptor in use, per device */
 
 static int zwspiTransfer(int _fd, uint8_t _cmd, uint32_t _address, uint16_t _count, const uint32_t _txData[], uint32_t _rxData[]);
 
 int zwspiOpen(uint8_t _dspi)
 {
   int fd = -1;
+  uint8_t dspi = _dspi & 0x0F;            /* DSPI number in lower 4 bits of _dspi */
+  uint8_t rdshift = (_dspi & 0xF0) >> 4;  /* Read-data shift amount in upper 4 bits of _dspi */
 
-  if (_dspi < MAX_DSPI)
+  if (dspi < MAX_DSPI)
   {
-    fd = open(device[_dspi], O_RDWR);
+    fd = open(device[dspi], O_RDWR);
     if (fd >= 0)
     {
       /* SPI mode */
@@ -80,6 +86,13 @@ int zwspiOpen(uint8_t _dspi)
       {
         goto ioctl_error;
       }   
+
+      /* Read-data bit-shift amount */
+      device_rdshift[dspi] = rdshift;
+
+      /* Record file-descriptor assigned to this device -- so we can
+         tell which device we are inside the read/write routines. */
+      device_fd[dspi] = fd;
     }
     else
     {
@@ -88,7 +101,7 @@ int zwspiOpen(uint8_t _dspi)
   }
   else
   {
-      zwDebug("zwspiOpen: invalid DSPI %d", _dspi);
+      zwDebug("zwspiOpen: invalid DSPI %d", dspi);
   }
 
   return fd;
@@ -124,6 +137,11 @@ void zwspiClose(int _fd)
 {
   if (_fd >= 0)
   {
+    for (int n = 0; n < MAX_DSPI; n++)
+    {
+      if (device_fd[n] == _fd)
+        device_fd[n] = -1;
+    }
     close(_fd);
   }
   else
@@ -141,7 +159,7 @@ static int zwspiTransfer(int _fd, uint8_t _cmd, uint32_t _address, uint16_t _cou
     if (_count > 0)
     {
       /* Calculate size of tx packet */
-      size_t len = 7 + 4 * _count;
+      size_t len = 1 + 4 + 2 + 4*_count + 1;
 
       /* Allocate space for transmit and receive data */
       uint8_t tx_buf[len];
@@ -169,6 +187,9 @@ static int zwspiTransfer(int _fd, uint8_t _cmd, uint32_t _address, uint16_t _cou
         *pTx++ = (uint8_t)(data & 0xFFu);
       }
 
+      /* Add extra byte of padding to allow extra clock cycles for read data */
+      *pTx++ = 0;
+
       /* Assemble full duplex transfer */
       struct spi_ioc_transfer tr = {
         .tx_buf = (unsigned long)&tx_buf[0],
@@ -183,7 +204,38 @@ static int zwspiTransfer(int _fd, uint8_t _cmd, uint32_t _address, uint16_t _cou
       /* Perform transfer */
       if ((ret = ioctl(_fd, SPI_IOC_MESSAGE(1), &tr)) == len)
       {
-        /* Copy result into receive data (unless null) */
+        /* Find the bit-shift amount to apply to the read-data to compensate
+           for clock delays on the SPI link */
+        uint8_t rdshift = 0;
+        for (int n = 0; n < MAX_DSPI; n++)
+        {
+          if (device_fd[n] == _fd)
+          {
+            rdshift = device_rdshift[n];
+          }
+        }
+
+        /* Do the read-data bit-shift -- shift 8 bits */
+        if ((rdshift & 0x8) != 0)
+          for (int n = 8; n < len; n++)
+            rx_buf[n-1] = rx_buf[n];
+
+        /* Do the read-data bit-shift -- shift 4 bits */
+        if ((rdshift & 0x4) != 0)
+          for (int n = 8; n < len; n++)
+            rx_buf[n-1] = ((rx_buf[n-1] & 0x0F) << 4) | ((rx_buf[n] & 0xF0) >> 4);
+
+        /* Do the read-data bit-shift -- shift 2 bits */
+        if ((rdshift & 0x2) != 0)
+          for (int n = 8; n < len; n++)
+            rx_buf[n-1] = ((rx_buf[n-1] & 0x3F) << 2) | ((rx_buf[n] & 0xC0) >> 6);
+
+        /* Do the read-data bit-shift -- shift 1 bit */
+        if ((rdshift & 0x1) != 0)
+          for (int n = 8; n < len; n++)
+            rx_buf[n-1] = ((rx_buf[n-1] & 0x7F) << 1) | ((rx_buf[n] & 0x80) >> 7);
+
+        /* Copy result into receive data as 32-bit register words (unless null) */
         if (_rxData != NULL)
         {
           for (uint16_t i = 0; i < _count; ++i)
