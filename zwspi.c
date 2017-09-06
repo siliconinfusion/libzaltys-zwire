@@ -37,7 +37,7 @@
 #include "zwspi.h"
 #include "zwexc.h"
 
-#define MAX_DSPI                2
+#define MAX_DSPI 3
 
 typedef enum
 {
@@ -47,11 +47,11 @@ typedef enum
   eZWSPICmdSeqWrite = 0x03      /* Write N times to sequential addresses */
 } ZWSPICmd;
 
-static const char* const device[MAX_DSPI] = { "/dev/spidev3.0", "/dev/spidev3.1" };  /* Devices */
+static const char* const device[MAX_DSPI] = { "/dev/spidev3.0", "/dev/spidev3.1", "/dev/spidev4.0" };  /* Devices */
 
-uint8_t device_rdshift[MAX_DSPI] = { 0, 0 };  /* Number of clocks by which read-data is delayed, per device */
+uint8_t device_rdshift[MAX_DSPI] = { 0, 0, 0 };  /* Number of clocks by which read-data is delayed, per device */
 
-int device_fd[MAX_DSPI] = { -1, -1 };  /* Current file-descriptor in use, per device */
+int device_fd[MAX_DSPI] = { -1, -1, -1 };  /* Current file-descriptor in use, per device */
 
 static int zwspiTransfer(int _fd, uint8_t _cmd, uint32_t _address, uint16_t _count, const uint32_t _txData[], uint32_t _rxData[]);
 
