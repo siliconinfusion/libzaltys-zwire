@@ -81,7 +81,7 @@ int zwspiOpen(uint8_t _dspi)
       }
 
       /* Speed Hz */
-      uint32_t speed = 11000000;
+      uint32_t speed = 17500000;
       if (ioctl(fd, SPI_IOC_WR_MAX_SPEED_HZ, &speed) != 0)
       {
         goto ioctl_error;
@@ -159,7 +159,7 @@ static int zwspiTransfer(int _fd, uint8_t _cmd, uint32_t _address, uint16_t _cou
     if (_count > 0)
     {
       /* Calculate size of tx packet */
-      size_t len = 1 + 4 + 2 + 4*_count + 1;
+      size_t len = 1 + 4 + 2 + 4*_count + 2;
 
       /* Allocate space for transmit and receive data */
       uint8_t tx_buf[len];
@@ -187,7 +187,8 @@ static int zwspiTransfer(int _fd, uint8_t _cmd, uint32_t _address, uint16_t _cou
         *pTx++ = (uint8_t)(data & 0xFFu);
       }
 
-      /* Add extra byte of padding to allow extra clock cycles for read data */
+      /* Add two extra bytes of padding to allow extra clock cycles for read data */
+      *pTx++ = 0;
       *pTx++ = 0;
 
       /* Assemble full duplex transfer */
@@ -196,7 +197,7 @@ static int zwspiTransfer(int _fd, uint8_t _cmd, uint32_t _address, uint16_t _cou
         .rx_buf = (unsigned long)&rx_buf[0],
         .len = len,
         .delay_usecs = 0,
-        .speed_hz = 11000000u,
+        .speed_hz = 17500000u,
         .bits_per_word = 8u,
       };
 
